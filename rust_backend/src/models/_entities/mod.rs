@@ -2,5 +2,6 @@
 
 pub mod prelude;
 
-pub mod product_template;
+pub mod products;
 pub mod users;
+pub mod product_template;
