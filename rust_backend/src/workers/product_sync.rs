@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use loco_rs::prelude::*;
-use crate::models::_entities::product_template;
+use crate::models::product_template_odoo;
 use crate::models::_entities::products;
 use sea_orm::{Database, sea_query::OnConflict};
 
@@ -25,30 +25,30 @@ impl BackgroundWorker<WorkerArgs> for Worker {
     async fn perform(&self, _args: WorkerArgs) -> Result<()> {
         println!("🚀 Iniciando Sincronización: Odoo 18 -> Base Local");
 
-        // 1. Conexión a la base de datos de Odoo
         let odoo_uri = "postgres://odoo:postgres@localhost:5432/odoo_prod";
         let odoo_db = Database::connect(odoo_uri)
             .await
-            .map_err(|e| Error::BadRequest(e.to_string()))?;
+            .map_err(|e| {
+                println!("❌ Fallo conectando a Odoo: {}", e);
+                Error::BadRequest(e.to_string())
+            })?;
 
-        // 2. Traer productos publicados de Odoo
-        let odoo_products = product_template::Entity::find()
-            .filter(product_template::Column::IsPublished.eq(true))
+        let odoo_products = product_template_odoo::Entity::find()
+            .filter(product_template_odoo::Column::IsPublished.eq(true))
             .all(&odoo_db)
             .await
             .map_err(|e| Error::BadRequest(e.to_string()))?;
 
-        println!("📦 Se encontraron {} productos para sincronizar.", odoo_products.len());
+        println!("📦 Se encontraron {} productos en Odoo.", odoo_products.len());
 
         for item in odoo_products {
-            // --- TRANSFORMACIÓN ---
-            // Odoo 18 usa JSON para el nombre. Extraemos el español o inglés.
             let name_string = item.name.get("es_ES")
                 .or(item.name.get("en_US"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("Sin nombre");
 
-            // --- PREPARAR MODELO LOCAL ---
+            println!("🔄 Procesando: {} (ID Odoo: {})", name_string, item.id);
+
             let active_product = products::ActiveModel {
                 odoo_id: Set(Some(item.id)),
                 name: Set(Some(name_string.to_string())),
@@ -58,8 +58,7 @@ impl BackgroundWorker<WorkerArgs> for Worker {
                 ..Default::default()
             };
 
-            // --- UPSERT (Insertar o Actualizar) ---
-            products::Entity::insert(active_product)
+            match products::Entity::insert(active_product)
                 .on_conflict(
                     OnConflict::column(products::Column::OdooId)
                         .update_columns([
@@ -69,12 +68,15 @@ impl BackgroundWorker<WorkerArgs> for Worker {
                         ])
                         .to_owned()
                 )
-                .exec(&self.ctx.db) // Se guarda en la DB de Loco
+                .exec(&self.ctx.db)
                 .await
-                .map_err(|e| Error::BadRequest(e.to_string()))?;
+            {
+                Ok(res) => println!("   ✅ Guardado exitoso (ID Local: {:?})", res.last_insert_id),
+                Err(err) => println!("   ❌ ERROR guardando {}: {}", name_string, err),
+            }
         }
 
-        println!("✅ Sincronización finalizada exitosamente.");
+        println!("✅ Proceso terminado.");
         Ok(())
     }
 }

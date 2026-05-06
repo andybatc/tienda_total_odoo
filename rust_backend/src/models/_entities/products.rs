@@ -10,6 +10,7 @@ pub struct Model {
     pub updated_at: DateTimeWithTimeZone,
     #[sea_orm(primary_key)]
     pub id: i32,
+    #[sea_orm(unique)]
     pub odoo_id: Option<i32>,
     pub sku: Option<String>,
     pub name: Option<String>,

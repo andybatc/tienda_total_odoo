@@ -2,4 +2,3 @@
 
 pub use super::products::Entity as Products;
 pub use super::users::Entity as Users;
-pub use super::product_template::Entity as ProductTemplate;

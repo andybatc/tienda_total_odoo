@@ -1,7 +1,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
-use crate::models::_entities::product_template::{self};
+use crate::models::product_template_odoo::{self};
 use loco_rs::prelude::*;
 use sea_orm::{query::*, Database};
 
@@ -14,8 +14,8 @@ pub async fn list(State(_ctx): State<AppContext>) -> Result<Response> {
         .map_err(|e| Error::BadRequest(e.to_string()))?;
 
     // 2. Consulta
-    let products = product_template::Entity::find()
-        .filter(product_template::Column::IsPublished.eq(true))
+    let products = product_template_odoo::Entity::find()
+        .filter(product_template_odoo::Column::IsPublished.eq(true))
         .limit(10)
         .all(&odoo_db)
         .await?;
