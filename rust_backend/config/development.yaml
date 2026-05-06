@@ -88,6 +88,9 @@ database:
   # Recreating schema when application loaded.  This is a dangerous operation, make sure that you using this flag only on dev environments or test mode
   dangerously_recreate: false
 
+odoo_database:
+  uri: {{ get_env(name="ODOO_DATABASE_URL", default="postgres://odoo:postgres@localhost:5432/odoo_prod") }}
+
 # Authentication Configuration
 auth:
   # JWT authentication

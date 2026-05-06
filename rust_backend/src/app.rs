@@ -47,9 +47,11 @@ impl Hooks for App {
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
         AppRoutes::with_default_routes() // controller routes below
+            .add_route(controllers::shop::routes())
             .add_route(controllers::auth::routes())
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
+        queue.register(crate::workers::product_sync::Worker::build(ctx)).await?;
         queue.register(DownloadWorker::build(ctx)).await?;
         Ok(())
     }

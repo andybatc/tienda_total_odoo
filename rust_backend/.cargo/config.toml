@@ -8,3 +8,18 @@ playground = "run --example playground"
 # (can be removed once link.exe is fixed)
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+sea-orm = {
+    version = "1.1.0",
+    features = [
+        "sqlx-postgres",
+        "runtime-tokio-rustls",
+        "macros",
+        "with-json",
+        "with-decimal",
+        "with-chrono",
+        "serde-serialize"
+    ]
+}
