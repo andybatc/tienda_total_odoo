@@ -12,7 +12,7 @@ async fn test_run_webhook_worker() {
 
     // Execute the worker ensuring that it operates in 'ForegroundBlocking' mode, which prevents the addition of your worker to the background
     assert!(
-        WebhookWorker::perform_later(&boot.app_context,WebhookWorkerArgs {})
+        WebhookWorker::perform_later(&boot.app_context,WebhookWorkerArgs {odoo_id: 13})
             .await
             .is_ok()
     );
