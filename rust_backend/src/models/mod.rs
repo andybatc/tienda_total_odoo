@@ -1,4 +1,4 @@
 pub mod _entities;
 pub mod users;
 pub mod products;
-pub mod product_template_odoo;
+pub mod product_template_odoo;pub mod configs;
