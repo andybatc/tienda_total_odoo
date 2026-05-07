@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use loco_rs::prelude::*;
-use sea_orm::{sea_query, Database, Set};
+use sea_orm::{Database, Set};
 use crate::models::_entities::products;
+use std::time::Duration;
 pub struct WebhookWorker {
     pub ctx: AppContext,
 }
@@ -22,51 +23,66 @@ impl BackgroundWorker<WebhookWorkerArgs> for WebhookWorker {
     }
 
     async fn perform(&self, args: WebhookWorkerArgs) -> Result<()> {
-        println!("================= Odoo Webhook Event =================");
-        println!("🔄 Sincronizando producto específico. ID Odoo: {}", args.odoo_id);
-
-        // 1. Conexión a la base de datos de Odoo 18
+        tokio::time::sleep(Duration::from_millis(500)).await;
         let odoo_uri = "postgres://odoo:postgres@localhost:5432/odoo_prod";
         let odoo_db = Database::connect(odoo_uri).await
             .map_err(|e| Error::wrap(e))?;
 
-        // 2. Buscar el producto específico en Odoo
+        // 2. Traer datos frescos de Odoo
         use crate::models::product_template_odoo;
         let odoo_item = product_template_odoo::Entity::find_by_id(args.odoo_id)
             .one(&odoo_db)
-            .await?;
+            .await
+            .map_err(|e| Error::wrap(e))?;
 
         if let Some(item) = odoo_item {
-            // 1. Manejo seguro de JsonValue para el nombre
-            let product_name = item.name.as_str().unwrap_or("Sin nombre");
+            // LÓGICA ODOO 18: El nombre es un JSONB {"es_ES": "Nombre", "en_US": "Name"}
+            // Intentamos obtener español, luego inglés, luego cualquier valor, o "Sin nombre"
+            let product_name = item.name
+                .get("es_ES")
+                .or_else(|| item.name.get("en_US"))
+                .or_else(|| item.name.as_object().and_then(|obj| obj.values().next()))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Sin nombre");
 
-            // 2. Mapear al modelo local (usando nombres correctos: name, sku, etc.)
-            let active_item = products::ActiveModel {
-                name: Set(Some(product_name.to_string())),
-                // Si list_price es Option<Decimal>, lo pasamos directamente
-                price: Set(item.list_price),
-                odoo_id: Set(Some(item.id)), // Envolviendo en Some() para Option<i32>
-                ..Default::default()
-            };
-
-            // 3. Upsert con nombres de columna corregidos
-            products::Entity::insert(active_item)
-                .on_conflict(
-                    sea_query::OnConflict::column(products::Column::OdooId)
-                        .update_columns([
-                            products::Column::Name,
-                            products::Column::Price
-                        ])
-                        .to_owned(),
-                )
-                .exec(&self.ctx.db)
+            // 4. Buscar en la base de datos local de la tienda (Rust)
+            let local_product = products::Entity::find()
+                .filter(products::Column::OdooId.eq(item.id))
+                .one(&self.ctx.db)
                 .await?;
 
-            println!("✅ Producto {} (ID: {}) sincronizado.", product_name, item.id);
-        } else {
-            println!("⚠️ No se encontró el producto con ID {} en Odoo.", args.odoo_id);
-        }
+            match local_product {
+                Some(existing_product) => {
+                    println!("🔄 Actualizando producto: {} (Odoo ID: {})", product_name, item.id);
 
+                    let mut active_model: products::ActiveModel = existing_product.into();
+
+                    // Solo actualizamos si el nombre extraído es válido
+                    if product_name != "Sin nombre" {
+                        active_model.name = Set(Some(product_name.to_string()));
+                    }
+
+                    active_model.price = Set(item.list_price);
+                    active_model.update(&self.ctx.db).await?;
+                }
+                None => {
+                    println!("✨ Creando nuevo producto: {} (Odoo ID: {})", product_name, item.id);
+
+                    let new_product = products::ActiveModel {
+                        name: Set(Some(product_name.to_string())),
+                        price: Set(item.list_price),
+                        odoo_id: Set(Some(item.id)),
+                        ..Default::default()
+                    };
+
+                    new_product.insert(&self.ctx.db).await?;
+                }
+            }
+
+            println!("✅ Sincronización exitosa para ID: {}", item.id);
+        } else {
+            println!("⚠️ No se encontró el producto con ID {} en la base de datos de Odoo", args.odoo_id);
+        }
         Ok(())
     }
 }
