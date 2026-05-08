@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-white">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro - Odoo Rust Shop</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <!-- Extensión para mandar JSON a la API de Loco -->
+    <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
+</head>
+<body class="h-full">
+<div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
+    <div class="sm:mx-auto sm:w-full sm:max-w-sm">
+        <h2 class="mt-10 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900">
+            Crear nueva cuenta
+        </h2>
+    </div>
+
+    <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
+        <!-- Usamos hx-ext="json-enc" porque /api/auth/register de Loco espera JSON -->
+        <form class="space-y-6" hx-post="/api/auth/register" hx-ext="json-enc" hx-target="#error-message">
+            <div>
+                <label class="block text-sm font-medium text-gray-900">Nombre Completo</label>
+                <input name="name" type="text" required class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-900">Email</label>
+                <input name="email" type="email" required class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-900">Password</label>
+                <input name="password" type="password" required class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm">
+            </div>
+
+            <div>
+                <button type="submit" class="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-indigo-500">
+                    Registrarse
+                </button>
+            </div>
+
+            <div id="error-message" class="text-center text-sm mt-2 text-gray-600"></div>
+        </form>
+
+        <p class="mt-10 text-center text-sm text-gray-500">
+            ¿Ya tienes cuenta?
+            <a href="/views/config/web-login" class="font-semibold text-indigo-600 hover:text-indigo-500">Inicia sesión</a>
+        </p>
+    </div>
+</div>
+</body>
+</html>
