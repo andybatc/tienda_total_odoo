@@ -12,6 +12,8 @@ use loco_rs::{
 };
 use migration::Migrator;
 use std::path::Path;
+use loco_rs::controller::views::{engines::TeraView, ViewEngine};
+use axum::{Extension, Router};
 
 #[allow(unused_imports)]
 use crate::{controllers, models::_entities::users, tasks, workers::downloader::DownloadWorker};
@@ -52,6 +54,14 @@ impl Hooks for App {
             .add_route(controllers::products_webhook::routes())
             .add_route(controllers::shop::routes())
             .add_route(controllers::auth::routes())
+    }
+    async fn after_routes(router: Router, _ctx: &AppContext) -> Result<Router> {
+        // 1. Construimos el motor Tera
+        let tera_engine = TeraView::build()?;
+
+        // 2. Lo inyectamos como una Extension dentro de una Layer
+        // Esto es lo que el controlador espera encontrar
+        Ok(router.layer(Extension(ViewEngine::new(tera_engine))))
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
         queue.register(crate::workers::webhook::WebhookWorker::build(ctx)).await?;

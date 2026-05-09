@@ -1,16 +1,73 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
-use loco_rs::prelude::*;
+use crate::controllers::auth as auth_controller;
 use crate::controllers::config::TokenForm;
 use crate::models::_entities::{configs, users};
 use crate::models::users::LoginParams;
+use crate::views::auth::LoginResponse;
+use axum::http::HeaderMap;
+use loco_rs::auth::jwt::JWT;
+use loco_rs::controller::views::engines::TeraView;
+use loco_rs::controller::views::ViewEngine;
+use loco_rs::prelude::Json;
+use loco_rs::prelude::*;
+use serde::Serialize;
 
-async fn login_display(State(_ctx): State<AppContext>) -> Result<Response> {
+#[derive(Serialize)]
+pub struct BaseContext {
+    pub current_user: Option<users::Model>,
+    // Aquí puedes añadir más cosas que sean globales (ej. notificaciones)
+}
+
+async fn get_current_user(ctx: &AppContext, cookie_header: Option<String>) -> Option<users::Model> {
+    let cookie_str = cookie_header?;
+
+    // 1. Extraer el token
+    let token = cookie_str
+        .split(';')
+        .find(|s| s.trim().starts_with("token="))?
+        .split('=')
+        .nth(1)?;
+
+    // 2. Validar el JWT
+    let jwt_config = ctx.config.get_jwt_config().ok()?;
+
+    // CORRECCIÓN: Quitamos el ::<loco_rs::auth::jwt::UserClaims>
+    let auth = JWT::new(&jwt_config.secret).validate(token).ok()?;
+
+    // 3. Buscar usuario en DB
+    users::Model::find_by_pid(&ctx.db, &auth.claims.pid)
+        .await
+        .ok()
+}
+
+pub async fn home_page(State(ctx): State<AppContext>, headers: HeaderMap) -> Result<Response> {
+    let cookie_header = headers
+        .get("cookie")
+        .and_then(|h| h.to_str().ok().map(|s| s.to_string()));
+    let user = get_current_user(&ctx, cookie_header).await;
+
+    // Usamos 'include_utils!' o el helper de renderizado de Loco
+    format::render().template(
+        "home.html",
+        serde_json::json!({
+            "current_user": user
+        }),
+    )
+}
+
+async fn login_display(State(ctx): State<AppContext>, headers: HeaderMap) -> Result<Response> {
     // Esto te dirá en la terminal desde dónde se está ejecutando el programa
     if let Ok(current_dir) = std::env::current_dir() {
         println!("Directorio actual de ejecución: {:?}", current_dir);
     }
+    let cookie_header = headers
+        .get("cookie")
+        .and_then(|h| h.to_str().ok().map(|s| s.to_string()));
+
+    // 2. Obtener el usuario (si existe)
+    let user = get_current_user(&ctx, cookie_header).await;
 
     let html_path = "assets/views/auth/login.html";
     let html = std::fs::read_to_string(html_path).map_err(|e| {
@@ -19,37 +76,44 @@ async fn login_display(State(_ctx): State<AppContext>) -> Result<Response> {
         Error::string("No se encuentra la plantilla de login")
     })?;
 
-    format::html(&html)
+    format::render().template(
+        &html,
+        serde_json::json!({
+            "current_user": user
+        }),
+    )
 }
 
 async fn login_web(
     State(ctx): State<AppContext>,
-    Form(params): Form<LoginParams>,
+    Form(params): Form<LoginParams>, // Recibimos el Formulario del HTML
 ) -> Result<Response> {
-    // 1. Buscar usuario (Corregido el manejo de errores)
-    let user = users::Model::find_by_email(&ctx.db, &params.email)
+    // --- EL PUENTE ---
+    // Convertimos el Form<LoginParams> en Json<LoginParams> para dárselo a Loco
+    let login_json = Json(params);
+
+    // Llamamos directamente a la función 'login' del controlador de Loco
+    let api_response = auth_controller::login(State(ctx.clone()), login_json).await?;
+
+    // --- PROCESAR LA RESPUESTA DE LOCO ---
+    // Si llegamos aquí, el login fue exitoso (Loco devolvió un Ok)
+    // Extraemos el cuerpo de la respuesta para obtener el Token
+    // Nota: Loco devuelve LoginResponse en formato JSON
+    let body_bytes = axum::body::to_bytes(api_response.into_body(), 1024 * 10)
         .await
-        .map_err(|_| Error::string("Credenciales inválidas"))?;
-
-    // 2. Verificar password
-    if !user.verify_password(&params.password) {
-        return Err(Error::string("Credenciales inválidas"));
-    }
-
-    // 3. Generar Token
-    let jwt_config = ctx.config.get_jwt_config()?;
-    let token = user
-        .generate_jwt(&jwt_config.secret, jwt_config.expiration)
         .map_err(|e| Error::string(&e.to_string()))?;
 
-    // 4. Crear Cookie
+    let login_res: LoginResponse = serde_json::from_slice(&body_bytes)
+        .map_err(|_| Error::string("Error al procesar respuesta de autenticación"))?;
+
+    // --- MANEJO DE COOKIES ---
+    let jwt_config = ctx.config.get_jwt_config()?;
     let cookie = format!(
         "token={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
-        token, jwt_config.expiration
+        login_res.token, jwt_config.expiration
     );
 
-    // 5. Respuesta (Usamos format::render().redirect o Response manual)
-    // Para HTMX y redirección, esto es lo más limpio:
+    // Respondemos al navegador
     Response::builder()
         .header("Set-Cookie", cookie)
         .header("HX-Redirect", "/ui/auth/token")
@@ -63,8 +127,13 @@ async fn register_display() -> Result<Response> {
     format::html(&html)
 }
 
-async fn render_ui(State(ctx): State<AppContext>) -> Result<Response> {
-    // 1. Obtener el token (aquí pondrías tu lógica para sacar el token de la DB o Config)
+pub async fn render_ui(
+    // 1. EXTRAEMOS EL MOTOR DE VISTAS AQUÍ (Axum te lo da mágicamente)
+    ViewEngine(v): ViewEngine<TeraView>,
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    // Obtener el token de la DB
     let config = configs::Entity::find()
         .filter(configs::Column::Key.eq("webhook_token"))
         .one(&ctx.db)
@@ -74,22 +143,26 @@ async fn render_ui(State(ctx): State<AppContext>) -> Result<Response> {
             Error::string("Error al conectar con la base de datos")
         })?;
 
-    // 2. Extraer el valor o poner un mensaje si no existe
     let current_token = config
         .and_then(|c| c.value)
         .unwrap_or_else(|| "No configurado".to_string());
 
-    // 2. Leer el archivo
-    let html_content = std::fs::read_to_string("assets/views/config/ui.html")
-        .map_err(|e| {
-            tracing::error!("Error leyendo ui.html: {:?}", e);
-            Error::string("Error al cargar la vista de configuración")
-        })?;
+    // Obtener usuario para el header
+    let cookie_header = headers
+        .get("cookie")
+        .and_then(|h| h.to_str().ok().map(|s| s.to_string()));
+    let user = get_current_user(&ctx, cookie_header).await;
 
-    // 3. Inyectar el valor dinámico
-    let rendered_html = html_content.replace("{CURRENT_TOKEN}", &current_token);
-
-    format::html(&rendered_html)
+    // 2. USAMOS .view() EN LUGAR DE .template()
+    // Le pasamos la referencia al motor de vistas (&v)
+    format::render().view(
+        &v,
+        "config/ui.html",
+        serde_json::json!({
+            "current_user": user,
+            "current_token": current_token
+        }),
+    )
 }
 
 async fn handle_ui_update(
@@ -114,8 +187,8 @@ async fn handle_ui_update(
             value: Set(Some(payload.token)),
             ..Default::default()
         }
-            .insert(&ctx.db)
-            .await?;
+        .insert(&ctx.db)
+        .await?;
     }
 
     Response::builder()
