@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Odoo Rust Shop{% endblock title %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        /* Estilo opcional para el banner si quieres una imagen de fondo real */
+        .banner-bg {
+            background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)),
+            url('https://images.unsplash.com/photo-1555066931-4365d14bab8c?q=80&w=2070&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 flex flex-col min-h-screen">
+
+<header class="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
+    <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center space-x-2 text-2xl font-bold tracking-tight">
+            <span class="text-blue-400 font-mono">&lt;R&gt;</span>
+            <span>Odoo<span class="text-blue-400">Shop</span></span>
+        </div>
+
+        <div class="flex items-center space-x-6">
+            {% if current_user %}
+            <div class="hidden md:block text-sm text-gray-300">
+                Bienvenido, <span class="font-semibold text-white">{{ current_user.name }}</span>
+            </div>
+            <a href="/ui/auth/logout"
+               class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm font-medium transition duration-200">
+                Cerrar Sesión
+            </a>
+            {% else %}
+            <a href="/ui/auth/login"
+               class="text-gray-300 hover:text-white transition duration-200 font-medium">
+                Iniciar Sesión
+            </a>
+            <a href="/ui/auth/register"
+               class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition duration-200">
+                Registrarse
+            </a>
+            {% endif %}
+        </div>
+    </nav>
+</header>
+
+<section class="banner-bg h-[400px] flex items-center justify-center text-center text-white">
+    <div class="px-4">
+        <h1 class="text-4xl md:text-6xl font-extrabold mb-4 drop-shadow-md">
+            Mi Tienda <span class="text-blue-400">Odoo</span>
+        </h1>
+        <p class="text-xl md:text-2xl text-gray-200 max-w-2xl mx-auto font-light drop-shadow-sm">
+            Conectando el rendimiento de <span class="font-bold text-orange-400">Rust</span> con el ecosistema ERP líder.
+        </p>
+        <div class="mt-8">
+            <a href="#main" class="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-full font-bold transition-all transform hover:scale-105">
+                Ver Productos
+            </a>
+        </div>
+    </div>
+</section>
+
+<main id="main" class="container mx-auto px-6 py-12 flex-grow">
+    {% block content %}
+    <div class="bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+        <h2 class="text-2xl font-bold text-slate-800">Cargando contenido...</h2>
+    </div>
+    {% endblock content %}
+</main>
+
+<footer class="bg-slate-900 text-gray-400 py-10 border-t border-slate-800">
+    <div class="container mx-auto px-6 text-center">
+        <p class="mb-2">Desarrollado con ❤️ usando <strong>Loco.rs</strong> y <strong>Axum</strong></p>
+        <p class="text-sm font-mono">&copy; 2026 Andy Batista - Odoo & Rust Developer</p>
+    </div>
+</footer>
+
+</body>
+</html>
