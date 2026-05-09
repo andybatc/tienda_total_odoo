@@ -143,7 +143,7 @@ pub async fn render_ui(
             Error::string("Error al conectar con la base de datos")
         })?;
 
-    let current_token = config
+    let token_value = config
         .and_then(|c| c.value)
         .unwrap_or_else(|| "No configurado".to_string());
 
@@ -160,7 +160,7 @@ pub async fn render_ui(
         "config/ui.html",
         serde_json::json!({
             "current_user": user,
-            "current_token": current_token
+            "current_token": token_value
         }),
     )
 }
